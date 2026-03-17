@@ -20,7 +20,7 @@ const char* ssid = "WiFi_Control";
 const char* password = "";
 WebServer server(80);
 IPAddress local_IP(33, 33, 33, 33);
-
+File file;
 struct tUser {
   byte UID[4];
   String name;
@@ -33,6 +33,7 @@ void handleAddNew() {
 }
 void handleRoot() {
   String html = "";
+  String data = "";
 
   File file = LittleFS.open("/home.html", "r");
   if(!file){
@@ -40,15 +41,40 @@ void handleRoot() {
      return;
   }
 
-  Serial.println("Read from file: ");
+  Serial.println("Read '/home.html': ");
   while(file.available()){
      html += char(file.read());
    }
   file.close();
   
+  Serial.println("Write '/users.data': ");
+  file = LittleFS.open("/users.data", "a");
+  for (int i = 0; i < 4; i++) {
+    file.write(lastUID[i]);
+  }
+  file.println(":User");
+  file.close();
+  
+  /*
+  file = LittleFS.open("/users.data", "r");
+  if(!file){
+     Serial.println("Failed to open 'users.data' for reading...");
+     return;
+  }
+  Serial.println("Read '/users.data': ");
+  while(file.available()){
+     //data += file.read();
+     byte buffer;
+      file.read(&buffer, 1);
+      Serial.print(buffer, DEC);
+   }
+   file.close();
+  Serial.println(data);
+  */
   server.send(200, "text/html", html);
 }
 void setup() {
+  byte  i;
   Serial.begin(115200); 
   while (!Serial) 
   SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN); // Инициализация SPI (int8_t sck, int8_t miso, int8_t mosi, int8_t ss)
@@ -64,8 +90,35 @@ void setup() {
   if (!LittleFS.begin())
   {
     Serial.println("An Error has occurred while mounting LittleFS");
-  
   }
+  file = LittleFS.open("/users.data", "r");
+  if(!file){
+     Serial.println("Failed to open 'users.data' for reading...");
+     return;
+  }
+  Serial.println("Read '/users.data': ");
+  for (i = 0; i < MAX_USERS; i++) {
+    if (file.available() >= 5) { // Проверяем, есть ли достаточно данных для чтения UID и имени
+      file.read(users[i].UID, 4); // Читаем UID
+      users[i].name = file.readStringUntil('\n'); // Читаем имя до новой строки
+      Serial.print("User ");
+      Serial.print(i);
+      Serial.print(": UID=");
+      for (byte j = 0; j < 4; j++) {
+        Serial.print(users[i].UID[j] < 0x10 ? " 0" : " ");
+        Serial.print(users[i].UID[j], HEX);
+        if (j < 3) Serial.print(":");
+      }
+      Serial.print(", Name=");
+      Serial.println(users[i].name);
+    } else {
+      break; // Если данных меньше, прекращаем чтение
+    }
+  }
+  String Out="Readed " + String(i) + " users";
+  Serial.println(Out);
+  file.close();
+  
   WiFi.softAP(ssid, password);
   Serial.println("Access Point started");
   Serial.print("IP address: ");
@@ -99,6 +152,7 @@ void loop() {
   for (byte i = 0; i < 4; i++) {
     Serial.print(UID[i] < 0x10 ? " 0" : " ");
     Serial.print(UID[i], HEX);
+   // Serial.print(UID[i], DEC);
   }
   Serial.println();
   memcpy(lastUID, UID, 4); // Сохраняем UID как последний считанный
