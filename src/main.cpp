@@ -26,72 +26,13 @@ struct tUser {
   String name;
 };
 tUser users[MAX_USERS];          // Массив для хранения данных о пользователях
-void handleAddNew() {
-  Serial.println("Button pressed");
-  server.sendHeader("Location", "/");
-  server.send(303);
-}
-void handleRoot() {
-  String html = "";
-  String data = "";
+byte userCount = 0;             // Счетчик количества пользователей
+byte idToEdit = 254;            // Идентификатор пользователя, которого нужно отредактировать
+bool confirmed = false;          // Флаг подтверждения
 
-  File file = LittleFS.open("/home.html", "r");
-  if(!file){
-     Serial.println("Failed to open file for reading...");
-     return;
-  }
-
-  Serial.println("Read '/home.html': ");
-  while(file.available()){
-     html += char(file.read());
-   }
-  file.close();
-  
-  Serial.println("Write '/users.data': ");
-  file = LittleFS.open("/users.data", "a");
-  for (int i = 0; i < 4; i++) {
-    file.write(lastUID[i]);
-  }
-  file.println(":User");
-  file.close();
-  
-  /*
-  file = LittleFS.open("/users.data", "r");
-  if(!file){
-     Serial.println("Failed to open 'users.data' for reading...");
-     return;
-  }
-  Serial.println("Read '/users.data': ");
-  while(file.available()){
-     //data += file.read();
-     byte buffer;
-      file.read(&buffer, 1);
-      Serial.print(buffer, DEC);
-   }
-   file.close();
-  Serial.println(data);
-  */
-  server.send(200, "text/html", html);
-}
-void setup() {
-  byte  i;
-  Serial.begin(115200); 
-  while (!Serial) 
-  SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN); // Инициализация SPI (int8_t sck, int8_t miso, int8_t mosi, int8_t ss)
-  rfid.PCD_Init();               // Инициализация модуля 
-  for (byte i = 0; i < 6; i++) { // Наполняем ключ
-    key.keyByte[i] = 0xFF;       // Ключ по умолчанию 0xFFFFFFFFFFFF
-  }
-  pinMode(LED_BUILTIN, OUTPUT);
-
-  Serial.println();
-  Serial.println("Scan PICC to see UID");
-  
-  if (!LittleFS.begin())
-  {
-    Serial.println("An Error has occurred while mounting LittleFS");
-  }
-  file = LittleFS.open("/users.data", "r");
+void readUsersFromFile() {
+  byte i;
+  File file = LittleFS.open("/users.data", "r");
   if(!file){
      Serial.println("Failed to open 'users.data' for reading...");
      return;
@@ -115,10 +56,200 @@ void setup() {
       break; // Если данных меньше, прекращаем чтение
     }
   }
-  String Out="Readed " + String(i) + " users";
+  userCount = i; // Сохраняем количество считанных пользователей
+  String Out="Readed " + String(userCount) + " users";
   Serial.println(Out);
   file.close();
+}
+void writeUsersToFile() {
+  byte i;
+  File file = LittleFS.open("/users.data", "w");
+  if(!file){
+     Serial.println("Failed to open 'users.data' for writing...");
+     return;
+  }
+  Serial.println("Writing to '/users.data': ");
+  for (i = 0; i < userCount; i++) {
+    file.write(users[i].UID, 4);
+    file.println(users[i].name);
+  }
+  file.close();
+}
+void appendUserToFile(){
+  File file = LittleFS.open("/users.data", "a");
+  if(!file){
+     Serial.println("Failed to open 'users.data' for appending...");
+     return;
+  }
+  file.write(UID, 4);
+  file.println("User" + String(userCount+1));
+  file.close();
+  users[userCount].name = "User" + String(userCount+1);
+  memcpy(users[userCount].UID, UID, 4);
+  userCount++;
+  Serial.println("Appended new user to 'users.data'");
+}
+void handleAddNew() {
+  Serial.println("Button 'ADD NEW' pressed");
+  appendUserToFile();
+
+  server.sendHeader("Location", "/userlist");
+  server.send(303);
+}
+void handleRoot() {
+  String html = "";
+  String data = "";
+
+  File file = LittleFS.open("/home.html", "r");
+  if(!file){
+     Serial.println("Failed to open file for reading...");
+     return;
+  }
+
+  Serial.println("Read '/home.html': ");
+  while(file.available()){
+     html += char(file.read());
+   }
+  file.close();
+  /*
+  Serial.println("Write '/users.data': ");
+  file = LittleFS.open("/users.data", "a");
+  for (int i = 0; i < 4; i++) {
+    file.write(lastUID[i]);
+  }
+  file.println(":User");
+  file.close();
   
+  */
+  
+  /*
+  file = LittleFS.open("/users.data", "r");
+  if(!file){
+     Serial.println("Failed to open 'users.data' for reading...");
+     return;
+  }
+  Serial.println("Read '/users.data': ");
+  while(file.available()){
+     //data += file.read();
+     byte buffer;
+      file.read(&buffer, 1);
+      Serial.print(buffer, DEC);
+   }
+   file.close();
+  Serial.println(data);
+  */
+  server.send(200, "text/html", html);
+}
+void handleUserList() {
+  String html = "";
+  String buffer = "";
+
+  readUsersFromFile();
+
+  File file = LittleFS.open("/userlist.html", "r");
+  if(!file){
+     Serial.println("Failed to open file for reading...");
+     return;
+  }
+  Serial.println("Read '/userlist.html': ");
+  while(file.available()){
+    // html += char(file.read());
+    buffer = file.readStringUntil('\n');
+    //Serial.println(buffer);
+    if (buffer.substring(0, 5) == "*****") {
+      for (byte i = 0; i < userCount; i++) {
+        buffer = "<tr>\n<td>" + users[i].name + "</td>\n";
+        buffer += "<td><a href='/edit?id="+String(i+1)+"'><button>Редагувати</button></a></td>\n";
+        buffer += "<td><a href='/delete?id="+String(i+1)+"'><button>Видалити</button></a></td>\n";
+        buffer += "</tr>\n";
+        html += buffer;
+      }
+    } else html += buffer;
+  }
+  file.close();
+  //Serial.println(html);
+  server.send(200, "text/html", html);
+}
+void handleEdit() {
+  if (server.hasArg("id")) {
+    String id = server.arg("id");
+    Serial.print("Id: ");
+    Serial.println(id);
+    idToEdit = id.toInt() - 1;
+  }
+  String html = "";
+  String buffer = "";
+
+  File file = LittleFS.open("/edituser.html", "r");
+  if(!file){
+     Serial.println("Failed to open file for reading...");
+     return;
+  }
+  Serial.println("Read '/edituser.html': ");
+  while(file.available()){
+    // html += char(file.read());
+    /*
+    buffer = file.readStringUntil('\n');
+    //Serial.println(buffer);
+    if (buffer.substring(0, 5) == "*****") {
+      for (byte i = 0; i < userCount; i++) {
+        buffer = "<tr>\n<td>" + users[i].name + "</td>\n";
+        buffer += "<td><a href='/edit?id="+String(i+1)+"'><button>Редагувати</button></a></td>\n";
+        buffer += "<td><a href='/delete?id="+String(i+1)+"'><button>Видалити</button></a></td>\n";
+        buffer += "</tr>\n";
+        html += buffer;
+      }
+    } else html += buffer;
+ 
+    */
+   html += file.readStringUntil('\n');
+   int pos = html.indexOf("*****");
+   if (pos != -1) {
+      String before = html.substring(0, pos);
+      String after = html.substring(pos + 5);
+      html = html.substring(0, pos) + users[0].name + html.substring(pos + 5); // Вставляем имя пользователя вместо "*****"      
+    }
+      
+  }
+  file.close();
+  //Serial.println(html);
+  server.send(200, "text/html", html);
+}
+void handleConfirmEdit() { // to be implemented
+  if (server.hasArg("name")) {
+    String name = server.arg("name");
+    Serial.print("Id: ");
+    Serial.println(idToEdit);
+    Serial.print(", Name: ");
+    Serial.println(name);
+  }
+  users[idToEdit].name = server.arg("name");
+  writeUsersToFile();
+  server.sendHeader("Location", "/userlist");
+  server.send(303);
+}
+
+void setup() {
+  byte  i;
+  Serial.begin(115200); 
+  while (!Serial) 
+  SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN); // Инициализация SPI (int8_t sck, int8_t miso, int8_t mosi, int8_t ss)
+  rfid.PCD_Init();               // Инициализация модуля 
+  for (byte i = 0; i < 6; i++) { // Наполняем ключ
+    key.keyByte[i] = 0xFF;       // Ключ по умолчанию 0xFFFFFFFFFFFF
+  }
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  Serial.println();
+  Serial.println("Scan PICC to see UID");
+  
+  if (!LittleFS.begin())
+  {
+    Serial.println("An Error has occurred while mounting LittleFS");
+  }
+
+  readUsersFromFile();
+
   WiFi.softAP(ssid, password);
   Serial.println("Access Point started");
   Serial.print("IP address: ");
@@ -126,6 +257,9 @@ void setup() {
   
   server.begin();
   server.on("/", handleRoot);
+  server.on("/userlist", handleUserList);
+  server.on("/edit", handleEdit);
+  server.on("/confirmedit", handleConfirmEdit);
   server.on("/addnew", handleAddNew);
 
 }
@@ -137,6 +271,12 @@ void blinkTwice(){
   digitalWrite(LED_BUILTIN, HIGH);
   delay(200);
   digitalWrite(LED_BUILTIN, LOW);
+}
+void blinkOnce(){
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(700);
+  digitalWrite(LED_BUILTIN, LOW);
+  
 }
 void loop() {
   
@@ -157,7 +297,16 @@ void loop() {
   Serial.println();
   memcpy(lastUID, UID, 4); // Сохраняем UID как последний считанный
   // rfid.PICC_DumpToSerial(&(rfid.uid));
-  blinkTwice();
-  handleRoot();
+  for (byte i = 0; i < userCount; i++) {
+    if (memcmp(UID, users[i].UID, 4) == 0) {
+      Serial.print("Welcome, ");
+      Serial.println(users[i].name);
+      blinkOnce();
+      confirmed = true;
+      return;
+    }
+  }
+  if (!confirmed) blinkTwice();
+  //appendUserToFile();
 
 }

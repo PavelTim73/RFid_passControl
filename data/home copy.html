@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name='viewport' content='width=device-width, initial-scale=1'>
+<title>ESP32 Control</title>
+<style>
+body { font-family: Arial; text-align: center; margin-top: 40px; }
+button { padding: 10px 20px; font-size: 18px; margin: 5px; }
+input { padding: 8px; font-size: 16px; }
+</style>
+</head>
+<body>
+<h2>Admin control page</h2>
+
+<p>LED Status: OFF</p>
+<a href='/toggle'><button>Toggle LED</button></a>
+<hr>
+ <h3>Send message to ESP32</h3>
+<form action='/message' method='POST'>
+  <input type='text' name='msg' placeholder='Enter message'>
+  <br><br><button type='submit'>Send First</button>
+</form>
+<p><b>Last message:</b> " + lastMessage + "</p>
+<a href='/addnew'><button>Add new user</button></a>
+<hr><hr>
+<form action='/message' method='POST'>
+  <input type='text' name='secmsg' placeholder='New message'>
+  <br><br><button type='submit'>Send Second</button>
+</form>
+</body></html>
